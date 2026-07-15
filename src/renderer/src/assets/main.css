@@ -1,0 +1,437 @@
+@import './base.css';
+
+body {
+  overflow: hidden;
+  user-select: none;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 16px 20px 20px;
+  gap: 16px;
+}
+
+.app__header {
+  display: flex;
+  justify-content: center;
+}
+
+.app__main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  min-height: 0;
+}
+
+.app__column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.app__sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+/* Orb */
+.orb {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: radial-gradient(circle at 30% 30%, var(--ev-c-gray-2), var(--ev-c-black-soft));
+  color: var(--color-text);
+  transition: box-shadow 200ms ease;
+}
+
+.orb__core {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6988e6, #34d3c9);
+}
+
+.orb__label {
+  font-size: 11px;
+  color: var(--ev-c-text-2);
+}
+
+.orb--listening .orb__core,
+.orb--acting .orb__core {
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+.orb--speaking {
+  box-shadow: 0 0 0 6px rgba(105, 136, 230, 0.2);
+}
+
+.orb--paused .orb__core {
+  background: linear-gradient(135deg, #e6a969, #e6d334);
+}
+
+.orb--error .orb__core {
+  background: linear-gradient(135deg, #e66969, #e63434);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.7;
+  }
+}
+
+/* Panels */
+.panel {
+  background: var(--ev-c-black-soft);
+  border: 1px solid var(--ev-c-gray-3);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ev-c-text-2);
+  margin-bottom: 10px;
+}
+
+.muted {
+  color: var(--ev-c-text-3);
+  font-size: 13px;
+}
+
+.muted.small {
+  font-size: 11px;
+  margin-top: 8px;
+}
+
+/* Conversation */
+.conversation-panel {
+  flex: 1;
+}
+
+.conversation-panel__scroll {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bubble {
+  padding: 8px 12px;
+  border-radius: 10px;
+  max-width: 90%;
+}
+
+.bubble--user {
+  align-self: flex-end;
+  background: var(--ev-c-gray-3);
+}
+
+.bubble--friday {
+  align-self: flex-start;
+  background: rgba(105, 136, 230, 0.16);
+}
+
+.bubble__role {
+  font-size: 10px;
+  color: var(--ev-c-text-3);
+  text-transform: uppercase;
+}
+
+/* Command bar */
+.command-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.command-bar__input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--ev-c-gray-3);
+  background: var(--ev-c-black-mute);
+  color: var(--color-text);
+}
+
+.command-bar__send,
+.command-bar__mic {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--ev-c-gray-3);
+  background: var(--ev-c-gray-3);
+  color: var(--color-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.command-bar__mic--active {
+  background: #e66969;
+  border-color: #e66969;
+}
+
+.command-bar__error {
+  font-size: 11px;
+  color: #e66969;
+}
+
+/* Task panel */
+.task-panel__goal {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.task-panel__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 0;
+  margin-bottom: 10px;
+}
+
+.task-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ev-c-text-2);
+}
+
+.task-step__marker {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ev-c-gray-2);
+  flex-shrink: 0;
+}
+
+.task-step--active .task-step__marker {
+  background: #6988e6;
+}
+
+.task-step--done .task-step__marker {
+  background: #34d399;
+}
+
+.task-step--failed .task-step__marker {
+  background: #e66969;
+}
+
+.task-step__error {
+  color: #e66969;
+}
+
+.task-panel__controls {
+  display: flex;
+  gap: 8px;
+}
+
+.task-panel__controls button {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--ev-c-gray-3);
+  background: var(--ev-c-gray-3);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.task-panel__controls button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.task-panel__controls .danger {
+  background: rgba(230, 105, 105, 0.2);
+  border-color: #e66969;
+}
+
+/* Activity / permissions / settings */
+.activity-panel,
+.settings-panel,
+.permissions-panel {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.activity-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.activity-entry {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--ev-c-gray-3);
+}
+
+.activity-entry__time {
+  color: var(--ev-c-text-3);
+  flex-shrink: 0;
+}
+
+.activity-entry--error .activity-entry__message {
+  color: #e66969;
+}
+
+.link {
+  background: none;
+  border: none;
+  color: #6988e6;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tabs__tab {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--ev-c-gray-3);
+  background: transparent;
+  color: var(--ev-c-text-2);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.tabs__tab--active {
+  background: var(--ev-c-gray-3);
+  color: var(--color-text);
+}
+
+.settings-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ev-c-text-2);
+  margin-bottom: 10px;
+}
+
+.settings-panel label.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-panel input {
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--ev-c-gray-3);
+  background: var(--ev-c-black-mute);
+  color: var(--color-text);
+}
+
+.permission-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.permission-list li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+}
+
+.badge--granted {
+  background: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+}
+
+.badge--denied,
+.badge--restricted {
+  background: rgba(230, 105, 105, 0.2);
+  color: #e66969;
+}
+
+.badge--not-determined,
+.badge--unknown,
+.badge--unsupported-platform {
+  background: rgba(230, 200, 105, 0.2);
+  color: #e6c869;
+}
+
+/* Confirm dialog */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirm-dialog {
+  background: var(--ev-c-black-soft);
+  border: 1px solid var(--ev-c-gray-3);
+  border-radius: 12px;
+  padding: 20px;
+  width: 360px;
+}
+
+.confirm-dialog__args {
+  background: var(--ev-c-black-mute);
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  max-height: 120px;
+  overflow: auto;
+  margin: 10px 0;
+}
+
+.confirm-dialog__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.confirm-dialog__buttons button {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--ev-c-gray-3);
+  background: var(--ev-c-gray-3);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.confirm-dialog__buttons .primary {
+  background: #6988e6;
+  border-color: #6988e6;
+}
