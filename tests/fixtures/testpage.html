@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Friday Test Fixture</title>
+  </head>
+  <body>
+    <h1>Friday Test Fixture</h1>
+    <p id="marker">hello from the fixture page</p>
+
+    <ul id="items">
+      <li>First item</li>
+      <li>Second item</li>
+      <li>Third item</li>
+    </ul>
+
+    <button id="click-target" onclick="document.getElementById('click-result').innerText = 'Clicked!'">Click Me</button>
+    <div id="click-result">Not clicked</div>
+
+    <input id="message-input" aria-label="Message" placeholder="Type a message" />
+
+    <button id="send-button" onclick="document.getElementById('send-result').innerText = 'Submitted!'">Send</button>
+    <div id="send-result">Not submitted</div>
+
+    <video id="video"></video>
+
+    <div style="height: 3000px">tall spacer to allow scrolling</div>
+  </body>
+</html>
