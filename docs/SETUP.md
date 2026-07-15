@@ -89,7 +89,40 @@ With the app running, type (or speak) these one at a time:
 Watch the **Current Task** panel to see each step verified, and the **Activity History** tab for
 a full log.
 
-## 7. Packaging (optional)
+## 7. Try Calendar, LinkedIn, and News (Phase 4/5)
+
+Calendar and LinkedIn reads work directly against the web UI in your persistent Chrome
+profile - log into `calendar.google.com` and `linkedin.com` once by hand (in the Friday-controlled
+Chrome window, or your normal Chrome if it shares the same profile), then try:
+
+- `What is on my Google Calendar today?`
+- `Read my next meeting.`
+- `Find free time.`
+- `Create an event called Design review at 3pm for 30 minutes.` (asks for confirmation first)
+- `Open LinkedIn.` then `Read my messages.` or `Summarize unread messages.`
+- `Tell me what happened today.` then `Next.` / `More.` / `Skip.` to page through stories
+- `Good morning, Friday.` for the full composed briefing
+
+None of these require Google/LinkedIn API keys or OAuth setup - Friday reads the pages the same
+way you would, using your existing logins. If a source is unreachable (not logged in, no
+network), Friday says so instead of making something up.
+
+## 8. Try the full ChatGPT-to-Claude workflow (Phase 3)
+
+This works either as separate voice commands or as one multi-sentence utterance (Friday splits
+it into clauses and chains them):
+
+```
+Open ChatGPT. Open my Regrade conversation. Ask it to create a prompt for fixing the Regrade
+agents. Wait until it finishes. Copy the final prompt. Open Claude. Open my Regrade project.
+Select Opus 4.8 if available. Paste the prompt. Run it. Wait until it finishes. Read me the
+result.
+```
+
+Say "Stop" at any point to cancel immediately. If a step needs a login, Friday pauses and says
+so; say "Continue" once you've logged in.
+
+## 9. Packaging (optional)
 
 ```bash
 npm run build:mac

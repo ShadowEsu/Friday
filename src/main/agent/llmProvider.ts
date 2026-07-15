@@ -92,4 +92,63 @@ export class OllamaProvider {
       return false
     }
   }
+
+  /**
+   * Free-form text generation for summarization/synthesis tasks (not tool routing).
+   * Returns null on any failure so callers can fall back to an honest non-LLM behavior
+   * instead of pretending a summary was produced.
+   */
+  async complete(
+    systemPrompt: string,
+    userPrompt: string,
+    timeoutMs = 30000
+  ): Promise<string | null> {
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), timeoutMs)
+      const res = await fetch(`${this.config.baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: this.config.model,
+          stream: false,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          options: { temperature: 0.2 }
+        }),
+        signal: controller.signal
+      })
+      clearTimeout(timeout)
+      if (!res.ok) return null
+      const json = (await res.json()) as { message?: { content?: string } }
+      const content = json.message?.content?.trim()
+      return content && content.length > 0 ? content : null
+    } catch {
+      return null
+    }
+  }
+
+  /** Summarize arbitrary text. Falls back to a truncated excerpt if the local model is unreachable. */
+  async summarize(
+    text: string,
+    instruction = 'Summarize this concisely for a spoken response.'
+  ): Promise<{
+    summary: string
+    usedLlm: boolean
+  }> {
+    const trimmed = text.trim()
+    if (!trimmed) return { summary: 'There was nothing to summarize.', usedLlm: false }
+    const result = await this.complete(
+      'You summarize web page and conversation content for a voice assistant. Be concise (2-5 sentences), plain spoken language, no markdown, no headers.',
+      `${instruction}\n\n---\n${trimmed.slice(0, 12000)}\n---`
+    )
+    if (result) return { summary: result, usedLlm: true }
+    const fallback = trimmed.length > 400 ? `${trimmed.slice(0, 400)}...` : trimmed
+    return {
+      summary: `I couldn't reach the local model to summarize this, so here's the raw excerpt: ${fallback}`,
+      usedLlm: false
+    }
+  }
 }

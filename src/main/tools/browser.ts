@@ -1,5 +1,16 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright'
 import { Tool, ToolResult } from '../agent/types'
+import { resolveSectionUrl } from '../agent/sites'
+import {
+  CalendarEvent,
+  addDays,
+  computeFreeSlots,
+  createEventUrl,
+  dayUrl,
+  formatTimeRange,
+  nextUpcoming,
+  parseEventTimeRange
+} from './calendarTime'
 
 export interface BrowserControllerOptions {
   headless?: boolean
@@ -284,7 +295,10 @@ export class BrowserController {
     }
   }
 
-  async navigateSection(section: string): Promise<ToolResult> {
+  async navigateSection(section: string, siteName?: string): Promise<ToolResult> {
+    const directUrl = siteName ? resolveSectionUrl(siteName, section) : undefined
+    if (directUrl) return this.openUrl(directUrl)
+
     const result = await this.clickByText(section)
     if (!result.ok) return result
     const page = await this.ensurePage()
@@ -443,6 +457,35 @@ export class BrowserController {
     return { ok: true, message: 'Toggled captions', verified: false }
   }
 
+  /** Finds a conversation/project by its visible title (ChatGPT/Claude sidebar, YouTube history, etc.). */
+  async openConversationByTitle(title: string): Promise<ToolResult> {
+    const page = await this.ensurePage()
+    const pattern = new RegExp(escapeRegex(title), 'i')
+    const candidate = page
+      .getByRole('link', { name: pattern })
+      .or(page.getByRole('button', { name: pattern }))
+      .or(page.getByText(pattern, { exact: false }))
+    const count = await candidate.count().catch(() => 0)
+    if (count === 0) {
+      return {
+        ok: false,
+        message: `Couldn't find "${title}" in the visible list. It may not be open here, or the name doesn't match exactly.`,
+        verified: false
+      }
+    }
+    try {
+      await candidate.first().click({ timeout: 8000 })
+      await page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {})
+      return { ok: true, message: `Opened "${title}"`, verified: true }
+    } catch (err) {
+      return {
+        ok: false,
+        message: `Found "${title}" but couldn't open it: ${err instanceof Error ? err.message : err}`,
+        verified: false
+      }
+    }
+  }
+
   async acceptFirstConnectionRequest(): Promise<ToolResult> {
     const page = await this.ensurePage()
     const acceptButton = page.getByRole('button', { name: /^accept$/i })
@@ -462,6 +505,149 @@ export class BrowserController {
     }
   }
 
+  /**
+   * Reads events for a given day off calendar.google.com. Google Calendar event chips expose
+   * their time range in an `aria-label` (role+label - the spec's preferred selector strategy),
+   * so this doesn't depend on any particular visual layout.
+   */
+  async readCalendarEvents(which: 'today' | 'tomorrow' = 'today'): Promise<{
+    events: CalendarEvent[]
+    raw: string[]
+  }> {
+    const day = which === 'tomorrow' ? addDays(new Date(), 1) : new Date()
+    const page = await this.ensurePage()
+    await page.goto(dayUrl(day), { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+    await page.waitForTimeout(1000)
+    const labels = await page.evaluate(() => {
+      const nodes = Array.from(
+        document.querySelectorAll('[role="button"][data-eventid], [data-eventid]')
+      )
+      return nodes
+        .map((el) => el.getAttribute('aria-label') || (el as HTMLElement).innerText)
+        .filter((t): t is string => !!t && t.trim().length > 0)
+    })
+    const raw = Array.from(new Set(labels.map((l) => l.trim())))
+    const events: CalendarEvent[] = []
+    for (const label of raw) {
+      const range = parseEventTimeRange(label, day)
+      if (range) events.push({ label: label.split(',')[0].trim(), ...range })
+    }
+    return { events, raw }
+  }
+
+  async nextMeeting(): Promise<ToolResult> {
+    const { events, raw } = await this.readCalendarEvents('today')
+    if (events.length === 0 && raw.length === 0) {
+      return {
+        ok: true,
+        message: "You don't have any events on your calendar today.",
+        verified: true
+      }
+    }
+    const next = nextUpcoming(events, new Date())
+    if (!next) {
+      return { ok: true, message: "You've got no more meetings today.", verified: true }
+    }
+    return {
+      ok: true,
+      message: `Your next meeting is "${next.label}" at ${formatTimeRange(next)}.`,
+      data: { title: next.label, start: next.start.toISOString(), end: next.end.toISOString() },
+      verified: true
+    }
+  }
+
+  async findFreeTime(): Promise<ToolResult> {
+    const { events } = await this.readCalendarEvents('today')
+    const now = new Date()
+    const dayStart = new Date(now)
+    dayStart.setHours(9, 0, 0, 0)
+    const dayEnd = new Date(now)
+    dayEnd.setHours(18, 0, 0, 0)
+    const start = now > dayStart ? now : dayStart
+    if (start >= dayEnd) {
+      return {
+        ok: true,
+        message: "It's past the end of your working day - no free time left today.",
+        verified: true
+      }
+    }
+    const free = computeFreeSlots(
+      events.map((e) => ({ start: e.start, end: e.end })),
+      start,
+      dayEnd
+    )
+    if (free.length === 0) {
+      return { ok: true, message: "You're fully booked for the rest of the day.", verified: true }
+    }
+    const summary = free.map((f) => formatTimeRange(f)).join(', ')
+    return {
+      ok: true,
+      message: `You have free time: ${summary}.`,
+      data: {
+        slots: free.map((f) => ({ start: f.start.toISOString(), end: f.end.toISOString() }))
+      },
+      verified: true
+    }
+  }
+
+  async openMeetingLink(): Promise<ToolResult> {
+    const page = await this.ensurePage()
+    const link = page
+      .getByRole('link', { name: /meet|zoom|join/i })
+      .or(page.getByRole('button', { name: /join with google meet|join now/i }))
+    if (!(await link.count())) {
+      return { ok: false, message: "I couldn't find a meeting link on this event", verified: false }
+    }
+    await link.first().click({ timeout: 8000 })
+    return { ok: true, message: 'Opened the meeting link', verified: true }
+  }
+
+  async createEvent(details: {
+    title: string
+    start: Date
+    end: Date
+    description?: string
+    location?: string
+  }): Promise<ToolResult> {
+    const page = await this.ensurePage()
+    const url = createEventUrl(details)
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
+      await page.waitForTimeout(1000)
+      const saveButton = page.getByRole('button', { name: /^save$/i })
+      if (await saveButton.count()) {
+        await saveButton.first().click({ timeout: 8000 })
+        await page.waitForTimeout(1000)
+      }
+      return {
+        ok: true,
+        message: `Created "${details.title}" at ${formatTimeRange({ start: details.start, end: details.end })}`,
+        verified: true
+      }
+    } catch (err) {
+      return {
+        ok: false,
+        message: `Couldn't create the event: ${err instanceof Error ? err.message : err}`,
+        verified: false
+      }
+    }
+  }
+
+  async gatherNews(topic: string): Promise<{ headlines: string[] }> {
+    const page = await this.ensurePage()
+    await this.openUrl(
+      `https://news.google.com/search?q=${encodeURIComponent(topic)}&hl=en-US&gl=US&ceid=US:en`
+    )
+    await page.waitForTimeout(1500)
+    const headlines = await page.evaluate(() => {
+      const nodes = Array.from(document.querySelectorAll('article'))
+      return nodes
+        .map((el) => (el as HTMLElement).innerText?.split('\n')[0]?.trim())
+        .filter((t): t is string => !!t && t.length > 0)
+    })
+    return { headlines }
+  }
+
   async close(): Promise<void> {
     await this.context?.close().catch(() => {})
     await this.browser?.close().catch(() => {})
@@ -475,7 +661,11 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-export function createBrowserTools(controller: BrowserController): Tool[] {
+export interface Summarizer {
+  summarize(text: string, instruction?: string): Promise<{ summary: string; usedLlm: boolean }>
+}
+
+export function createBrowserTools(controller: BrowserController, summarizer?: Summarizer): Tool[] {
   const t = (
     name: string,
     description: string,
@@ -510,9 +700,16 @@ export function createBrowserTools(controller: BrowserController): Tool[] {
     ),
     t(
       'browser_navigate_section',
-      'Click a navigation link/section on the current site by name',
+      'Go to a named section of the current site (messages, requests, notifications, etc.)',
       false,
-      async (args) => controller.navigateSection(String(args.section))
+      async (args, ctx) =>
+        controller.navigateSection(String(args.section), ctx.agentContext.currentSite)
+    ),
+    t(
+      'browser_open_conversation',
+      'Open a conversation or project from a visible list by its title (ChatGPT/Claude sidebar, etc.)',
+      false,
+      async (args) => controller.openConversationByTitle(String(args.title))
     ),
     t('browser_read', 'Read the visible text content of the current page', false, async () => {
       const text = await controller.readVisibleText()
@@ -538,12 +735,43 @@ export function createBrowserTools(controller: BrowserController): Tool[] {
       }
     ),
     t(
+      'browser_summarize_list',
+      'Summarize the visible list items on the page (messages, requests, headlines)',
+      false,
+      async (args) => {
+        const items = await controller.readListItems()
+        if (items.length === 0)
+          return { ok: false, message: 'Nothing visible to summarize', verified: true }
+        const text = items.join('\n---\n')
+        if (!summarizer) {
+          return { ok: true, message: items.join('. '), data: { items }, verified: true }
+        }
+        const instruction = args.instruction
+          ? String(args.instruction)
+          : 'Summarize these items for the user in a few spoken sentences, noting anything time-sensitive or that needs a reply.'
+        const { summary } = await summarizer.summarize(text, instruction)
+        return { ok: true, message: summary, data: { items, summary }, verified: true }
+      }
+    ),
+    t(
       'browser_summarize',
       'Summarize the visible text content of the current page',
       false,
-      async () => {
+      async (args) => {
         const text = await controller.readVisibleText()
-        return { ok: text.length > 0, message: text, data: { text }, verified: true }
+        if (!text) return { ok: false, message: 'The page appears empty', verified: true }
+        if (!summarizer) {
+          const excerpt = text.length > 400 ? `${text.slice(0, 400)}...` : text
+          return {
+            ok: true,
+            message: `Local model isn't connected, so here's the raw text: ${excerpt}`,
+            data: { text },
+            verified: true
+          }
+        }
+        const instruction = args.instruction ? String(args.instruction) : undefined
+        const { summary } = await summarizer.summarize(text, instruction)
+        return { ok: true, message: summary, data: { text, summary }, verified: true }
       }
     ),
     t('browser_click', 'Click a button or link matching the given text', false, async (args) =>
@@ -602,6 +830,68 @@ export function createBrowserTools(controller: BrowserController): Tool[] {
       'Accept the first visible LinkedIn connection request',
       true,
       async () => controller.acceptFirstConnectionRequest()
+    ),
+    t(
+      'calendar_read_events',
+      "Read today's or tomorrow's Google Calendar events",
+      false,
+      async (args) => {
+        const which = args.day === 'tomorrow' ? 'tomorrow' : 'today'
+        const { events, raw } = await controller.readCalendarEvents(which)
+        if (raw.length === 0) {
+          return {
+            ok: true,
+            message: `You have no events ${which}.`,
+            data: { events: [] },
+            verified: true
+          }
+        }
+        const list = (events.length > 0 ? events.map((e) => e.label) : raw).join(', ')
+        return {
+          ok: true,
+          message: `${which === 'today' ? "Today's" : "Tomorrow's"} events: ${list}.`,
+          data: { events },
+          verified: true
+        }
+      }
+    ),
+    t('calendar_next_meeting', "Read the user's next upcoming meeting today", false, async () =>
+      controller.nextMeeting()
+    ),
+    t(
+      'calendar_find_free_time',
+      "Find free time on the user's calendar for the rest of the working day",
+      false,
+      async () => controller.findFreeTime()
+    ),
+    t(
+      'calendar_open_meeting_link',
+      'Open the video call link on the currently visible calendar event',
+      false,
+      async () => controller.openMeetingLink()
+    ),
+    t(
+      'calendar_create_event',
+      'Create a new Google Calendar event (requires confirmation)',
+      true,
+      async (args) => {
+        const start = new Date(String(args.start))
+        const end = new Date(String(args.end))
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+          return {
+            ok: false,
+            message: 'Missing or invalid start/end time for the event',
+            verified: false
+          }
+        }
+        return controller.createEvent({
+          title: String(args.title ?? 'New event'),
+          start,
+          end,
+          description: args.description ? String(args.description) : undefined,
+          location: args.location ? String(args.location) : undefined
+        })
+      }
     )
   ]
 }

@@ -137,3 +137,140 @@ describe('CommandRouter - rule-based parsing (offline, no LLM)', () => {
     expect(result.plan.steps[0].tool).toBe('morning_briefing')
   })
 })
+
+describe('CommandRouter - conversation open + ask phrasing (Phase 3)', () => {
+  it('parses "Open my Regrade conversation." with no site prefix', async () => {
+    const result = await router.route('Open my Regrade conversation.', ctx())
+    expect(result.plan.steps).toEqual([
+      {
+        tool: 'browser_open_conversation',
+        args: { title: 'Regrade' },
+        label: 'Open "Regrade"'
+      }
+    ])
+  })
+
+  it('parses "Open Claude\'s Regrade project." into an open-site + open-conversation plan', async () => {
+    const result = await router.route("Open Claude's Regrade project.", ctx())
+    expect(result.plan.steps).toEqual([
+      {
+        tool: 'browser_open_url',
+        args: { url: 'https://claude.ai', siteName: 'claude' },
+        label: 'Open claude'
+      },
+      { tool: 'browser_open_conversation', args: { title: 'Regrade' }, label: 'Open "Regrade"' }
+    ])
+  })
+
+  it('parses "Ask ChatGPT to create a prompt for fixing the Regrade agents." as type+submit', async () => {
+    const result = await router.route(
+      'Ask ChatGPT to create a prompt for fixing the Regrade agents.',
+      ctx()
+    )
+    expect(result.plan.steps).toEqual([
+      {
+        tool: 'browser_type',
+        args: { text: 'create a prompt for fixing the Regrade agents' },
+        label: 'Type "create a prompt for fixing the Regrade agents"'
+      },
+      { tool: 'browser_submit', args: {}, label: 'Submit' }
+    ])
+  })
+
+  it('parses broadened wait/read phrasing', async () => {
+    expect((await router.route('Wait until it finishes.', ctx())).plan.steps[0].tool).toBe(
+      'browser_wait_for_completion'
+    )
+    expect((await router.route('Read me the result.', ctx())).plan.steps[0].tool).toBe(
+      'browser_read'
+    )
+    expect((await router.route('Summarize what Claude changed.', ctx())).plan.steps[0].tool).toBe(
+      'browser_summarize'
+    )
+  })
+})
+
+describe('CommandRouter - multi-clause composite commands', () => {
+  it('chains the full ChatGPT-to-Claude workflow paragraph into one plan', async () => {
+    const utterance =
+      'Open ChatGPT. Open my Regrade conversation. Ask it to create a prompt for fixing the Regrade agents. ' +
+      'Wait until it finishes. Copy the final prompt. Open Claude. Open my Regrade project. ' +
+      'Select Opus 4.8 if available. Paste the prompt. Run it. Wait until it finishes. Read me the result.'
+    const result = await router.route(utterance, ctx())
+    expect(result.understood).toBe(true)
+    const tools = result.plan.steps.map((s) => s.tool)
+    expect(tools).toEqual([
+      'browser_open_url', // Open ChatGPT
+      'browser_open_conversation', // Open my Regrade conversation
+      'browser_type', // Ask it to create a prompt...
+      'browser_submit',
+      'browser_wait_for_completion',
+      'browser_copy_response', // Copy the final prompt
+      'browser_open_url', // Open Claude
+      'browser_open_conversation', // Open my Regrade project
+      'browser_select_model', // Select Opus 4.8 if available
+      'browser_paste',
+      'browser_submit', // Run it
+      'browser_wait_for_completion',
+      'browser_read' // Read me the result
+    ])
+  })
+
+  it('falls through to "not understood" (rather than a broken partial plan) if one clause fails', async () => {
+    const result = await router.route('Fribbleflorp the whatsit. Open YouTube.', ctx())
+    expect(result.understood).toBe(false)
+  })
+})
+
+describe('CommandRouter - calendar commands (Phase 4)', () => {
+  it('parses "What is on my Google Calendar today?"', async () => {
+    const result = await router.route('What is on my Google Calendar today?', ctx())
+    expect(result.plan.steps[0]).toEqual({
+      tool: 'calendar_read_events',
+      args: { day: 'today' },
+      label: "Read today's calendar events"
+    })
+  })
+
+  it('parses "Read my next meeting."', async () => {
+    const result = await router.route('Read my next meeting.', ctx())
+    expect(result.plan.steps[0].tool).toBe('calendar_next_meeting')
+  })
+
+  it('parses "Find free time."', async () => {
+    const result = await router.route('Find free time.', ctx())
+    expect(result.plan.steps[0].tool).toBe('calendar_find_free_time')
+  })
+
+  it('parses "Create an event called Design review at 3pm for 30 minutes."', async () => {
+    const result = await router.route(
+      'Create an event called Design review at 3pm for 30 minutes.',
+      ctx()
+    )
+    expect(result.plan.steps[0].tool).toBe('calendar_create_event')
+    const args = result.plan.steps[0].args as { title: string; start: string; end: string }
+    expect(args.title).toBe('Design review')
+    expect(new Date(args.start).getHours()).toBe(15)
+    expect(new Date(args.end).getTime() - new Date(args.start).getTime()).toBe(30 * 60000)
+  })
+})
+
+describe('CommandRouter - news and pending-list navigation (Phase 5)', () => {
+  it('parses "Tell me what happened today."', async () => {
+    const result = await router.route('Tell me what happened today.', ctx())
+    expect(result.plan.steps[0].tool).toBe('news_briefing')
+  })
+
+  it('routes "next" to queue_next only when there is a pending queue', async () => {
+    const withoutQueue = await router.route('next', ctx())
+    expect(withoutQueue.understood).toBe(false)
+
+    const withQueue = await router.route('next', ctx({ queue: ['a story'] }))
+    expect(withQueue.plan.steps[0].tool).toBe('queue_next')
+  })
+
+  it('parses "Go back."', async () => {
+    const result = await router.route('Go back.', ctx())
+    expect(result.plan.steps[0].tool).toBe('browser_go_back')
+  })
+})

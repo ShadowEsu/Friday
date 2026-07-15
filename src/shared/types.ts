@@ -20,6 +20,8 @@ export interface AgentContext {
   currentSite?: string
   currentUrl?: string
   lastEntity?: string
+  /** Pending items left to read one-at-a-time (e.g. remaining news stories after "next"). */
+  queue?: string[]
   history: { role: 'user' | 'friday'; text: string }[]
 }
 
