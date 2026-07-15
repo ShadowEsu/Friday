@@ -44,3 +44,28 @@ export function resolveAppName(name: string): string | undefined {
   const key = name.trim().toLowerCase()
   return KNOWN_APPS[key]
 }
+
+/**
+ * Direct, stable URLs for named sections of a site - preferred over clicking a nav label by
+ * text, which breaks whenever a site's visible label doesn't literally match what the user said
+ * (e.g. LinkedIn's nav says "Messaging", not "messages").
+ */
+export const SECTION_URLS: Record<string, Record<string, string>> = {
+  linkedin: {
+    messages: 'https://www.linkedin.com/messaging/',
+    messaging: 'https://www.linkedin.com/messaging/',
+    inbox: 'https://www.linkedin.com/messaging/',
+    'connection requests': 'https://www.linkedin.com/mynetwork/invitation-manager/',
+    requests: 'https://www.linkedin.com/mynetwork/invitation-manager/',
+    invitations: 'https://www.linkedin.com/mynetwork/invitation-manager/',
+    network: 'https://www.linkedin.com/mynetwork/',
+    'my network': 'https://www.linkedin.com/mynetwork/',
+    notifications: 'https://www.linkedin.com/notifications/'
+  }
+}
+
+export function resolveSectionUrl(siteName: string, section: string): string | undefined {
+  const site = SECTION_URLS[siteName.trim().toLowerCase()]
+  if (!site) return undefined
+  return site[section.trim().toLowerCase()]
+}

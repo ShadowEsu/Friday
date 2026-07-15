@@ -10,7 +10,8 @@ import { MemoryStore } from './memory/store'
 import { ToolRegistry } from './tools/registry'
 import { openAppTool } from './tools/openApp'
 import { BrowserController, createBrowserTools } from './tools/browser'
-import { morningBriefingTool } from './tools/briefing'
+import { createNewsTools, queueNextTool } from './tools/news'
+import { createMorningBriefingTool } from './tools/briefing'
 import { SpeechOutput } from './tools/speak'
 import { WhisperCppProvider, TranscriptionProvider } from './tools/transcribe'
 import { CommandRouter } from './agent/router'
@@ -70,12 +71,15 @@ function bootstrapAgent(): void {
     clipboardReader: () => clipboard.readText()
   })
 
+  const llm = new OllamaProvider({ baseUrl: currentSettings.baseUrl, model: currentSettings.model })
+
   const tools = new ToolRegistry()
   tools.register(openAppTool)
-  tools.register(morningBriefingTool)
-  for (const tool of createBrowserTools(browserController)) tools.register(tool)
+  tools.register(createMorningBriefingTool(browserController, llm))
+  tools.register(queueNextTool)
+  for (const tool of createBrowserTools(browserController, llm)) tools.register(tool)
+  for (const tool of createNewsTools(browserController, llm)) tools.register(tool)
 
-  const llm = new OllamaProvider({ baseUrl: currentSettings.baseUrl, model: currentSettings.model })
   const router = new CommandRouter(llm, tools.catalog())
   const speech = new SpeechOutput()
 

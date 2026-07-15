@@ -18,11 +18,28 @@ accounts, no cloud database, and no telemetry.
 
 - A command router that turns natural language into a verified action plan, entirely offline
   (no LLM required) for the core vocabulary in the product spec - see `tests/router.test.ts`.
-- A pluggable local-LLM fallback (Ollama) for anything the rule-based router doesn't recognize.
+  This includes **multi-clause composite commands**: a single utterance made of several
+  sentences (e.g. the full ChatGPT-to-Claude workflow paragraph from the spec) gets split into
+  clauses and chained into one plan, so the whole workflow routes as one command.
+- A pluggable local-LLM fallback (Ollama) for anything the rule-based router doesn't recognize,
+  and for real text summarization (`browser_summarize`, `browser_summarize_list`, the morning
+  briefing, and news headlines) - with an honest non-LLM fallback (raw excerpt) if Ollama isn't
+  reachable, never a fabricated summary.
 - Browser control via Playwright: open a URL, search, open a result (with "prefer official"),
   read/summarize a page, click, type, scroll, submit, copy/paste, wait for AI responses to
-  finish generating, select a model if visible, and control `<video>` playback.
+  finish generating, select a model if visible, open a conversation/project by name, and
+  control `<video>` playback.
 - Native macOS app launching (`open -a`) with real verification, not just "the command ran."
+- **Calendar (Phase 4)**: read today's/tomorrow's events, read the next meeting, find free time,
+  open a meeting link, create an event (via Google Calendar's quick-add URL scheme, after
+  confirmation) - all off calendar.google.com, no OAuth setup required.
+- **LinkedIn (Phase 4)**: direct-URL navigation to messaging/invitations (not fragile nav-label
+  clicking), read/summarize messages, read/accept connection requests (after confirmation).
+- **News briefing (Phase 5)**: gathers headlines, deduplicates near-identical stories from
+  different outlets (Jaccard similarity over significant tokens), and reads them one at a time
+  with "next"/"more"/"skip" pagination.
+- **Good Morning routine (Phase 5)**: a real composed briefing (time, calendar, LinkedIn,
+  news) where each source degrades honestly and independently if it's unreachable.
 - A visible task panel, conversation log, local activity history, settings, and a permissions
   status screen - all backed by a local SQLite database.
 - Stop / Pause / Continue, including a "you need to log in manually, I've paused" flow.
@@ -31,10 +48,11 @@ accounts, no cloud database, and no telemetry.
 
 ## What's stubbed or unbuilt
 
-- Calendar, LinkedIn message reading, and news summaries (Phase 4/5 in the spec) - the morning
-  briefing currently only reports the date/time and says so honestly.
 - Wake-word activation and screenshot-based visual fallback clicking.
 - Whisper.cpp transcription is wired up but requires you to install the binary yourself.
+- Per-article news summarization (the news briefing summarizes headlines, not full article
+  bodies - opening and reading every article would be slow and fragile).
+- "Go back" (one step) for a story queue - pagination is forward-only ("next"/"more"/"skip").
 
 See `docs/LIMITATIONS.md` for the full, honest list.
 
@@ -69,7 +87,7 @@ docs/              setup, troubleshooting, limitations, implementation report
 ## Testing
 
 ```bash
-npm test          # vitest - 42 tests, all offline / local (no live sites, no Ollama required)
+npm test          # vitest - 72 tests, all offline / local (no live sites, no Ollama required)
 npm run typecheck
 npm run lint
 ```

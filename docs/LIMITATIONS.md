@@ -2,78 +2,84 @@
 
 This build was done in a Linux cloud sandbox with **no display, no microphone/speaker, no macOS,
 and a restrictive network egress policy** (no access to youtube.com, linkedin.com, chatgpt.com,
-claude.ai, or GitHub/Electron binary CDNs). That shaped what could actually be exercised versus
-what is implemented-but-unverified. This document is deliberately specific about which is which.
+claude.ai, calendar.google.com, news.google.com, or GitHub/Electron binary CDNs). That shaped
+what could actually be exercised versus what is implemented-but-unverified. This document is
+deliberately specific about which is which, across both the original Phase 1+2 pass and this
+pass (Phase 3/4/5 completion: real summarization, Calendar, LinkedIn messages, news, the
+composed Good Morning briefing, and multi-clause composite commands).
 
-## Verified by automated tests (42 tests, all passing)
+## Verified by automated tests (72 tests, all passing)
 
 - **Command router** (`tests/router.test.ts`): every command in the product spec's required list
-  and demo script parses to the correct tool call, entirely offline. Context carry-over
-  ("Open LinkedIn" → "messages") and control words are covered.
-- **Agent loop** (`tests/agent/loop.test.ts`): multi-step plan execution, verify-before-continue
-  (a failed step honestly stops the plan instead of continuing), instant stop mid-plan, pause/
-  continue gating, and the confirm-before-sensitive-action flow (both approve and decline paths).
+  and demo script parses to the correct tool call, entirely offline, including the new
+  conversation-open/ask/calendar/news rules and **multi-clause composite commands** - the full
+  ChatGPT-to-Claude workflow paragraph from the spec is verified to split into 13 correctly
+  ordered tool calls from one utterance, with a test confirming a failing clause falls back to
+  "not understood" instead of a broken partial plan. Context carry-over and control words are
+  also covered.
+- **Agent loop** (`tests/agent/loop.test.ts`): multi-step plan execution, verify-before-continue,
+  instant stop mid-plan, pause/continue gating, and the confirm-before-sensitive-action flow.
 - **Tool registry** (`tests/tools/registry.test.ts`): dispatch, unknown-tool handling, abort-signal
   short-circuiting, exception containment.
 - **Browser automation primitives** (`tests/tools/browser.test.ts`): real Playwright + headless
   Chromium against a local static fixture page - navigation+verification, reading text/list items,
-  clicking, typing into a labeled field, submitting, scrolling, and `<video>` play/pause/seek with
-  real state verification (not just "the call didn't throw").
-- **Local memory** (`tests/memory/db.test.ts`): SQLite-backed settings, activity history, and
-  key-value memory round-trip correctly via `better-sqlite3`.
-- **Permissions module** (`tests/permissions.test.ts`): returns `unsupported-platform` cleanly on
-  non-macOS without touching the Electron API.
+  clicking, typing into a labeled field, submitting, scrolling, and `<video>` play/pause/seek.
+- **Calendar time/date logic** (`tests/tools/calendarTime.test.ts`): aria-label time-range parsing,
+  free-slot computation (including merging overlapping busy blocks), next-upcoming-meeting
+  selection, day-view URL construction, and the quick-add event URL builder - all pure functions,
+  fully covered without a live Google Calendar.
+- **News dedup** (`tests/tools/news.test.ts`): Jaccard-similarity near-duplicate headline removal
+  (keeps genuinely distinct stories, merges the same story from different outlets, respects the
+  item cap, preserves order) - a pure function, fully covered without a live search.
+- **Local memory** (`tests/memory/db.test.ts`) and **permissions** (`tests/permissions.test.ts`)
+  as before.
 
 ## Implemented but NOT verified against real hardware/sites
 
 These are real, non-stub implementations, but nothing in this sandbox could exercise them
 end-to-end. Validate them yourself on your Mac before relying on them:
 
-- **Voice I/O.** `usePushToTalk` uses the real `MediaRecorder`/`getUserMedia` browser APIs, and
-  `WhisperCppProvider` shells out to a real whisper.cpp binary. Neither has been run against
-  actual microphone input, because this sandbox has no audio hardware. `SpeechOutput` calls
-  macOS's `say` command - never executed, because this sandbox isn't macOS.
-- **Native macOS app control.** `open_app` calls `open -a` and verifies via `osascript`; this
-  logic is straightforward but has never run on macOS. Accessibility-API-based control beyond
-  `open -a` (reading/clicking arbitrary native UI controls) is **not implemented** - the spec's
-  "macOS Accessibility APIs" section is scoped down to just app launching in this first pass.
-- **Site-specific browser selectors** for YouTube ("official" result detection), LinkedIn
-  (messages/connection-request navigation, accept-request), ChatGPT and Claude (response
-  extraction, completion detection, model selection) were written against each site's DOM
-  structure from general knowledge, but **could not be tested against the live sites** - this
-  sandbox has no network path to them. The generic primitives underneath (click-by-role,
-  type-by-label, read-visible-text, scroll) are tested and solid; the site-specific heuristics
-  built on top of them are the highest-risk area to validate first on your Mac.
-- **macOS permission status.** `getPermissionStatus()` calls real Electron `systemPreferences`
-  APIs (mic/screen/accessibility), but only compiles/type-checks here - it returns
-  `unsupported-platform` in this sandbox by design and was never observed reading real macOS TCC
-  state.
-- **Ollama LLM fallback.** `OllamaProvider` is a real HTTP client with a real prompt/schema, but
-  no Ollama instance was reachable to test it against. If it's unreachable, the router degrades
-  gracefully (says it doesn't understand) rather than crashing - that fallback path *is* tested.
-- **Electron packaging** (`npm run build:mac`, code signing, DMG creation). Never run - this
-  sandbox can't build for macOS and the Electron binary download itself is blocked here.
-- **Global keyboard shortcut** for push-to-talk registers via Electron's `globalShortcut` API;
-  compiles, never exercised interactively.
+- **Voice I/O**, **native macOS app control beyond `open -a`**, **macOS permission status**, and
+  **Electron packaging** - unchanged from the original pass; still unverified for the same
+  reasons (no audio hardware, not macOS).
+- **Site-specific browser selectors** for YouTube, LinkedIn, ChatGPT, Claude, **and now Google
+  Calendar (`aria-label`/`data-eventid` scraping) and Google News (`article` element scraping)**
+  were written from general knowledge of each site's DOM/URL structure, but could not be tested
+  against the live sites - this sandbox still has no network path to them. The generic
+  primitives underneath (click-by-role, type-by-label, read-visible-text, scroll) remain tested
+  and solid; these site-specific heuristics are the highest-risk area to validate first on your
+  Mac, in this order: calendar day-view event scraping, news article scraping, then LinkedIn
+  messaging/invitation-manager direct URLs (these replaced fragile nav-label click-matching with
+  direct URLs, which should be *more* reliable but is still unverified against the live site).
+- **The Google Calendar quick-add event URL scheme** (`action=TEMPLATE&text=...&dates=...`) is a
+  real, documented Google URL format, not something invented for this project - but the "click
+  Save" step after navigating there was written against general knowledge of the create-event
+  dialog's button and has not been observed against the live page.
+- **Ollama-backed summarization** (`browser_summarize`, `browser_summarize_list`, the morning
+  briefing, and news headline rewriting) is real, with a genuinely-tested honest fallback (raw
+  excerpt, clearly labeled) when Ollama is unreachable - but the "good" path, an actual LLM
+  producing a coherent summary, was never exercised against a live Ollama instance.
+- **The composed Good Morning briefing** wires together calendar, LinkedIn, and news reads, each
+  in its own try/catch so one failing source doesn't block the others - the composition logic is
+  straightforward and the individual pieces are covered above, but the full composed flow has
+  never run end-to-end against real accounts.
 
-## Not built at all (explicitly out of scope for this pass)
+## Deliberately scoped down (not gaps, but explicit design choices)
 
-- **Phase 4/5 of the spec**: Calendar reading, LinkedIn message/request *reading* (accepting a
-  visible request is implemented; proactively reading and summarizing unread messages is not),
-  and news summarization. The "Good Morning" briefing tool exists and correctly reports the
-  date/time, and says outright that calendar/message/news integration isn't connected yet -
-  it does not fabricate calendar events or messages.
-- **Wake-word activation** ("Friday" hotword). Only push-to-talk (hold a button / shortcut) and
-  typed input are implemented, per the spec's own phased rollout ("wake word later").
-- **Screenshot-based visual fallback clicking.** The spec lists this as a last-resort fallback
-  behind role/label/DOM-text/placeholder/selector matching - none of the built-in tools needed it,
-  so it wasn't built. If a future site defeats all the text-based strategies, this would be the
-  next thing to add.
-- **ChatGPT-to-Claude end-to-end workflow** as a single scripted flow. Every individual step it
-  needs (open site, find conversation, submit prompt, wait for completion, copy response, switch
-  site, select model, paste, submit, wait, summarize) exists as a tool and is routable from
-  natural language, but the full 15-step chain from the spec has not been run start-to-finish
-  against real ChatGPT/Claude accounts.
+- **Wake-word activation** ("Friday" hotword). Only push-to-talk and typed input are implemented,
+  per the spec's own phased rollout ("wake word later").
+- **Screenshot-based visual fallback clicking.** Listed in the spec as a last-resort fallback
+  behind role/label/DOM-text/placeholder/selector matching - none of the built-in tools needed it.
+- **Per-article news summarization.** The news briefing summarizes/reads headlines (deduplicated),
+  not full article bodies - opening and reading every article would be slow and fragile for
+  limited benefit. The morning briefing and `news_briefing` tool are honest about this scope.
+- **Story-queue "go back."** Pagination through news stories is forward-only (`next`/`more`/
+  `skip`); there's no "previous story." "Go back" instead means browser back-navigation, which
+  is the more common interpretation and was previously unmapped entirely.
+- **Free-time / event-creation NLP is intentionally simple.** `calendar_find_free_time` assumes
+  a 9am-6pm working day (not user-configurable yet). `calendar_create_event`'s rule-based parser
+  only handles one phrasing shape ("create an event called X at TIME [for N minutes]"); anything
+  else falls through to the Ollama LLM fallback, which is itself unverified per above.
 
 ## Why this split instead of pretending it all works
 

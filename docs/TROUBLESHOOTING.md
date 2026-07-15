@@ -38,6 +38,21 @@ its layout or the selectors don't match, the affected tool will report `ok: fals
 specific message rather than silently doing the wrong thing - check the Activity History for what
 it actually tried.
 
+## "Summarize" just reads back the raw page text instead of a real summary
+
+Real summarization needs Ollama reachable at the configured base URL (Settings → Local model). If
+it's unreachable, `browser_summarize`/`browser_summarize_list`/the morning briefing/news headlines
+fall back to an honest raw excerpt - Friday will say "Local model isn't connected..." or "I
+couldn't reach the local model..." rather than silently returning unsummarized text. Run
+`ollama serve` and confirm the model in Settings is pulled (`ollama pull llama3.1`).
+
+## Calendar/LinkedIn/News commands say they couldn't reach the page
+
+These read the live web UI (calendar.google.com, linkedin.com, news.google.com) in Friday's
+persistent Chrome profile - they need you to already be logged in there (Friday never logs in for
+you) and a working network connection. Try opening the site manually first (`Open LinkedIn.`) and
+confirm you're logged in, then retry the command.
+
 ## Confirmation dialog never appears / sensitive action ran without asking
 
 Check Settings → "Confirm before sensitive actions" is enabled. The sensitive-tool list lives in
